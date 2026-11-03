@@ -2,14 +2,14 @@
 
 [![GitHub Release](https://img.shields.io/github/release/Nerwyn/custom-card-features.svg?style=for-the-badge)](https://github.com/nerwyn/custom-card-features/releases)
 [![License](https://img.shields.io/github/license/Nerwyn/custom-card-features.svg?style=for-the-badge)](LICENSE)
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-blue.svg?style=for-the-badge)](https://github.com/hacs/default)
+[![marketplace_badge](https://img.shields.io/badge/Marketplace-Default-blue.svg?style=for-the-badge)](https://github.com/hacs/default)
 [![Project Maintenance](https://img.shields.io/badge/maintainer-Nerwyn-blue.svg?style=for-the-badge)](https://github.com/Nerwyn)
 ![Github](https://img.shields.io/github/followers/Nerwyn.svg?style=for-the-badge)
 [![GitHub Activity](https://img.shields.io/github/last-commit/Nerwyn/custom-card-features?style=for-the-badge)](https://github.com/Nerwyn/custom-card-features/commits/main)
 [![Community Forum](https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge)](https://community.home-assistant.io/t/service-call-button-tile-feature/620724)
 [![Buy Me A Coffee](https://img.shields.io/badge/donate-☕buy_me_a_coffee-yellow.svg?style=for-the-badge)](https://www.buymeacoffee.com/nerwyn)
 
-[![My Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=custom-card-features&owner=Nerwyn&category=Plugin)
+[![My Home Assistant](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?repository=custom-card-features&owner=Nerwyn&category=Plugin)
 
 _Formerly called Service Card Tile Feature_
 
@@ -103,7 +103,7 @@ Toggles feature three icons! There's the icon normally shown alongside the label
 
 # How To Use
 
-This project now has a fully featured configuration user interface! To get started, install this project using HACS. Then go to a dashboard and create a tile card, or any other card that supports card features. The entity ID can be anything you like. Click `Add feature` and then `Custom features row`
+This project now has a fully featured configuration user interface! To get started, install this project using the Marketplace. Then go to a dashboard and create a tile card, or any other card that supports card features. The entity ID can be anything you like. Click `Add feature` and then `Custom features row`
 
 All custom features are encapsulated in a custom features row. This allows you to add multiple custom features to a row, apply overall CSS styles, and change the widths of features in the row relative to each other using the `flex-basis` CSS property. You can add a custom features row just like any default feature, except that this feature is available for all entities.
 
