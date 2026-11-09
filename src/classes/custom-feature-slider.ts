@@ -37,6 +37,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 
 	pressedTimeout?: ReturnType<typeof setTimeout>;
 	dragHapticBucket?: number;
+	dragLocked: boolean = false;
 	dragHapticMajorBucket?: number;
 	dragHapticStrongBucket?: number;
 
@@ -58,7 +59,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 	}
 
 	onInput(_e: InputEvent) {
-		if (!this.swiping) {
+		if (!this.swiping && !this.dragLocked) {
 			clearTimeout(this.getValueFromHassTimer);
 			this.getValueFromHass = false;
 			this._value = this.slider.value;
@@ -118,8 +119,33 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 		this.dragHapticStrongBucket = strongBucket;
 	}
 
+	valueFromPointer(e: PointerEvent) {
+		const rect = this.slider.getBoundingClientRect();
+		let value = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+		if (this.rtl) {
+			value = 1 - value;
+		}
+		return value * (this.range[1] - this.range[0]) + this.range[0];
+	}
+
+	// Once a drag is clearly horizontal, keep it: block page scroll and track the
+	// finger even after it leaves the slider vertically.
+	onTouchMove(e: TouchEvent) {
+		if (this.dragLocked && e.cancelable) {
+			e.preventDefault();
+		}
+	}
+
+	onPointerLeave(e: PointerEvent) {
+		if (!this.dragLocked) {
+			super.onPointerLeave(e);
+		}
+	}
+
 	onPointerDown(e: PointerEvent) {
 		super.onPointerDown(e);
+		this.dragLocked = false;
+		this.slider.setPointerCapture?.(e.pointerId);
 
 		// Delay pressed state to fix initial slider thumb transition
 		this.pressed = false;
@@ -131,13 +157,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 			this.sliderOn = true;
 
 			// iOS tap fix
-			const rect = this.slider.getBoundingClientRect();
-			let value = (e.clientX - rect.left) / rect.width;
-			if (this.rtl) {
-				value = 1 - value;
-			}
-			value = value * (this.range[1] - this.range[0]) + this.range[0];
-			this._value = value;
+			this._value = this.valueFromPointer(e);
 			this.dragHapticBucket = undefined;
 			this.dragHapticMajorBucket = undefined;
 			this.dragHapticStrongBucket = undefined;
@@ -147,13 +167,15 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 
 	async onPointerUp(e: PointerEvent) {
 		clearTimeout(this.pressedTimeout);
+		const wasLocked = this.dragLocked;
+		this.dragLocked = false;
 		this.dragHapticBucket = undefined;
 		this.dragHapticMajorBucket = undefined;
 		this.dragHapticStrongBucket = undefined;
 		super.onPointerUp(e);
 
 		if (!this.swiping && this.initialX && this.initialY) {
-			this._value = this.slider.value;
+			this._value = wasLocked ? this.valueFromPointer(e) : this.slider.value;
 			this.fireHapticEvent('light');
 			await this.sendAction('tap_action');
 		} else {
@@ -170,12 +192,18 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 		super.onPointerMove(e);
 
 		if (this.currentX && this.currentY && e.isPrimary) {
+			const dx = Math.abs((this.currentX ?? 0) - (this.initialX ?? 0));
+			const dy = Math.abs((this.currentY ?? 0) - (this.initialY ?? 0));
+			if (!this.dragLocked && !this.swiping && dx > 4 && dx >= dy) {
+				this.dragLocked = true;
+			}
+
 			// Only consider significant enough movement
 			const sensitivity = 40;
-			if (
-				Math.abs((this.currentX ?? 0) - (this.initialX ?? 0)) <
-				Math.abs((this.currentY ?? 0) - (this.initialY ?? 0)) - sensitivity
-			) {
+			if (this.dragLocked) {
+				this._value = this.valueFromPointer(e);
+				this.dragHaptic();
+			} else if (dx < dy - sensitivity) {
 				this.swiping = true;
 				this.getValueFromHass = true;
 				this.setValue();
@@ -279,6 +307,10 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 				@pointermove=${this.onPointerMove}
 				@pointercancel=${this.onPointerCancel}
 				@pointerleave=${this.onPointerLeave}
+				@touchmove=${{
+					handleEvent: (e: TouchEvent) => this.onTouchMove(e),
+					passive: false,
+				}}
 				@contextmenu=${this.onContextMenu}
 			/>
 		`;
