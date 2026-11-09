@@ -154,6 +154,7 @@ export interface ISliderOptions {
 	ticks?: boolean;
 	drag_haptics?: boolean;
 	drag_haptics_interval?: number;
+	drag_haptics_major_interval?: number;
 }
 
 export interface ISpinboxOptions {

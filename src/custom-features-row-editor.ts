@@ -1224,6 +1224,18 @@ export class CustomFeaturesRowEditor extends LitElement {
 					},
 					DRAG_HAPTICS_INTERVAL,
 				)}
+				${this.buildSelector(
+					'Drag haptics major interval',
+					'drag_haptics_major_interval',
+					{
+						number: {
+							min: 0,
+							step: 'any',
+							mode: 'box',
+							unit_of_measurement: unit,
+						},
+					},
+				)}
 			</div>
 			${this.buildAppearancePanel(html`
 				${this.buildSelector(

@@ -12,6 +12,7 @@ import {
 	SliderThumbType,
 	SliderThumbTypes,
 } from '../models/interfaces/IConfig';
+import { HapticType } from '../models/interfaces/HomeAssistant';
 import { getDefaultStep } from '../utils/autofill';
 import { buildStyles } from '../utils/styles';
 import { BaseCustomFeature } from './base-custom-feature';
@@ -36,6 +37,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 
 	pressedTimeout?: ReturnType<typeof setTimeout>;
 	dragHapticBucket?: number;
+	dragHapticMajorBucket?: number;
 
 	set _value(value: string | number | boolean | undefined) {
 		value = Number(value);
@@ -64,7 +66,8 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 		}
 	}
 
-	// Ticks every drag_haptics_interval units while dragging, independent of `haptics`
+	// Ticks every drag_haptics_interval units while dragging, independent of `haptics`.
+	// Optional drag_haptics_major_interval ticks harder at its multiples.
 	dragHaptic() {
 		if (
 			String(this.renderTemplate(this.config.drag_haptics ?? 'false')) !=
@@ -79,18 +82,30 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 						DRAG_HAPTICS_INTERVAL) as unknown as string,
 				),
 			) || DRAG_HAPTICS_INTERVAL;
-		const bucket = Math.floor(
-			((this.value as number) - this.range[0]) / interval,
+		const major = Number(
+			this.renderTemplate(
+				(this.config.drag_haptics_major_interval ?? 0) as unknown as string,
+			),
 		);
-		if (
-			this.dragHapticBucket != undefined &&
-			bucket != this.dragHapticBucket
-		) {
+		const offset = (this.value as number) - this.range[0];
+		const bucket = Math.floor(offset / interval);
+		const majorBucket = major > 0 ? Math.floor(offset / major) : undefined;
+
+		let haptic: HapticType | undefined;
+		if (this.dragHapticBucket != undefined) {
+			if (majorBucket != this.dragHapticMajorBucket) {
+				haptic = 'light';
+			} else if (bucket != this.dragHapticBucket) {
+				haptic = 'selection';
+			}
+		}
+		if (haptic) {
 			const event = new Event('haptic', { bubbles: true, composed: true });
-			event.detail = 'selection';
+			event.detail = haptic;
 			window.dispatchEvent(event);
 		}
 		this.dragHapticBucket = bucket;
+		this.dragHapticMajorBucket = majorBucket;
 	}
 
 	onPointerDown(e: PointerEvent) {
@@ -114,6 +129,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 			value = value * (this.range[1] - this.range[0]) + this.range[0];
 			this._value = value;
 			this.dragHapticBucket = undefined;
+			this.dragHapticMajorBucket = undefined;
 			this.dragHaptic();
 		}
 	}
@@ -121,6 +137,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 	async onPointerUp(e: PointerEvent) {
 		clearTimeout(this.pressedTimeout);
 		this.dragHapticBucket = undefined;
+		this.dragHapticMajorBucket = undefined;
 		super.onPointerUp(e);
 
 		if (!this.swiping && this.initialX && this.initialY) {
