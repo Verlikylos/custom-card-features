@@ -291,7 +291,11 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 	onPointerDown(e: PointerEvent) {
 		super.onPointerDown(e);
 		this.resetDrag();
-		this.slider.setPointerCapture?.(e.pointerId);
+		try {
+			this.slider.setPointerCapture?.(e.pointerId);
+		} catch {
+			// Pointer no longer active; capture is best effort
+		}
 
 		// Delay pressed state to fix initial slider thumb transition
 		this.pressed = false;
