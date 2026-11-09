@@ -1236,6 +1236,18 @@ export class CustomFeaturesRowEditor extends LitElement {
 						},
 					},
 				)}
+				${this.buildSelector(
+					'Drag haptics strong interval',
+					'drag_haptics_strong_interval',
+					{
+						number: {
+							min: 0,
+							step: 'any',
+							mode: 'box',
+							unit_of_measurement: unit,
+						},
+					},
+				)}
 			</div>
 			${this.buildAppearancePanel(html`
 				${this.buildSelector(
