@@ -3,6 +3,8 @@ export const HOLD_TIME = 500;
 export const REPEAT_DELAY = 100;
 
 export const HAPTICS = false;
+export const DRAG_HAPTICS = false;
+export const DRAG_HAPTICS_INTERVAL = 10;
 
 export const DEBOUNCE_TIME = 1000;
 export const UPDATE_AFTER_ACTION_DELAY = 1000;

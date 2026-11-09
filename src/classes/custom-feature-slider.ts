@@ -2,7 +2,12 @@ import { css, CSSResult, html, PropertyValues } from 'lit';
 import { customElement, query, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 
-import { RANGE_MAX, RANGE_MIN, STEP } from '../models/constants';
+import {
+	DRAG_HAPTICS_INTERVAL,
+	RANGE_MAX,
+	RANGE_MIN,
+	STEP,
+} from '../models/constants';
 import {
 	SliderThumbType,
 	SliderThumbTypes,
@@ -30,6 +35,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 	ticks: boolean = false;
 
 	pressedTimeout?: ReturnType<typeof setTimeout>;
+	dragHapticBucket?: number;
 
 	set _value(value: string | number | boolean | undefined) {
 		value = Number(value);
@@ -54,7 +60,37 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 			this.getValueFromHass = false;
 			this._value = this.slider.value;
 			this.sliderOn = true;
+			this.dragHaptic();
 		}
+	}
+
+	// Ticks every drag_haptics_interval units while dragging, independent of `haptics`
+	dragHaptic() {
+		if (
+			String(this.renderTemplate(this.config.drag_haptics ?? 'false')) !=
+			'true'
+		) {
+			return;
+		}
+		const interval =
+			Number(
+				this.renderTemplate(
+					(this.config.drag_haptics_interval ??
+						DRAG_HAPTICS_INTERVAL) as unknown as string,
+				),
+			) || DRAG_HAPTICS_INTERVAL;
+		const bucket = Math.floor(
+			((this.value as number) - this.range[0]) / interval,
+		);
+		if (
+			this.dragHapticBucket != undefined &&
+			bucket != this.dragHapticBucket
+		) {
+			const event = new Event('haptic', { bubbles: true, composed: true });
+			event.detail = 'selection';
+			window.dispatchEvent(event);
+		}
+		this.dragHapticBucket = bucket;
 	}
 
 	onPointerDown(e: PointerEvent) {
@@ -77,11 +113,14 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 			}
 			value = value * (this.range[1] - this.range[0]) + this.range[0];
 			this._value = value;
+			this.dragHapticBucket = undefined;
+			this.dragHaptic();
 		}
 	}
 
 	async onPointerUp(e: PointerEvent) {
 		clearTimeout(this.pressedTimeout);
+		this.dragHapticBucket = undefined;
 		super.onPointerUp(e);
 
 		if (!this.swiping && this.initialX && this.initialY) {
@@ -114,6 +153,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 				this.setSliderState();
 			} else {
 				this._value = this.slider.value;
+				this.dragHaptic();
 			}
 		}
 	}

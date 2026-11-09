@@ -12,6 +12,8 @@ import {
 	DATETIME_MIN,
 	DEBOUNCE_TIME,
 	DOUBLE_TAP_WINDOW,
+	DRAG_HAPTICS,
+	DRAG_HAPTICS_INTERVAL,
 	HAPTICS,
 	HOLD_TIME,
 	INPUT_TYPE,
@@ -1200,6 +1202,27 @@ export class CustomFeaturesRowEditor extends LitElement {
 						boolean: {},
 					},
 					HAPTICS,
+				)}
+				${this.buildSelector(
+					'Haptics while dragging',
+					'drag_haptics',
+					{
+						boolean: {},
+					},
+					DRAG_HAPTICS,
+				)}
+				${this.buildSelector(
+					'Drag haptics interval',
+					'drag_haptics_interval',
+					{
+						number: {
+							min: 0,
+							step: 'any',
+							mode: 'box',
+							unit_of_measurement: unit,
+						},
+					},
+					DRAG_HAPTICS_INTERVAL,
 				)}
 			</div>
 			${this.buildAppearancePanel(html`

@@ -152,6 +152,8 @@ export interface ISliderOptions {
 	step?: number;
 	thumb?: ThumbType;
 	ticks?: boolean;
+	drag_haptics?: boolean;
+	drag_haptics_interval?: number;
 }
 
 export interface ISpinboxOptions {
