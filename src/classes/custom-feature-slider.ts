@@ -6,6 +6,8 @@ import {
 	DRAG_HAPTICS_INTERVAL,
 	RANGE_MAX,
 	RANGE_MIN,
+	SCRUB_LABELS,
+	SCRUB_TIERS,
 	STEP,
 } from '../models/constants';
 import { HapticType } from '../models/interfaces/HomeAssistant';
@@ -38,6 +40,13 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 	pressedTimeout?: ReturnType<typeof setTimeout>;
 	dragHapticBucket?: number;
 	dragLocked: boolean = false;
+	pointerLost: boolean = false;
+	dragLastX?: number;
+	dragFloat?: number;
+	scrubLevel?: number;
+	liveSentAt?: number;
+	liveSentValue?: unknown;
+	liveTimer?: ReturnType<typeof setTimeout>;
 	dragHapticMajorBucket?: number;
 	dragHapticStrongBucket?: number;
 
@@ -110,30 +119,167 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 			}
 		}
 		if (haptic) {
-			const event = new Event('haptic', { bubbles: true, composed: true });
-			event.detail = haptic;
-			window.dispatchEvent(event);
+			this.fireDragHaptic(haptic);
 		}
 		this.dragHapticBucket = bucket;
 		this.dragHapticMajorBucket = majorBucket;
 		this.dragHapticStrongBucket = strongBucket;
 	}
 
-	valueFromPointer(e: PointerEvent) {
+	valueFromX(clientX: number) {
 		const rect = this.slider.getBoundingClientRect();
-		let value = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+		let value = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
 		if (this.rtl) {
 			value = 1 - value;
 		}
 		return value * (this.range[1] - this.range[0]) + this.range[0];
 	}
 
-	// Once a drag is clearly horizontal, keep it: block page scroll and track the
-	// finger even after it leaves the slider vertically.
+	valueFromPointer(e: PointerEvent) {
+		return this.valueFromX(e.clientX);
+	}
+
+	// Precision scrubbing: the further the finger moves above or below the
+	// slider, the less the value changes per pixel of horizontal movement.
+	scrubFactor(clientY: number) {
+		const rect = this.slider.getBoundingClientRect();
+		const distance = Math.max(rect.top - clientY, clientY - rect.bottom, 0);
+		if (
+			String(this.renderTemplate(this.config.precision_scrub ?? 'false')) !=
+			'true'
+		) {
+			return 1;
+		}
+		for (const [limit, factor] of SCRUB_TIERS) {
+			if (distance < limit) {
+				return factor;
+			}
+		}
+		return SCRUB_TIERS[SCRUB_TIERS.length - 1][1];
+	}
+
+	// A locked drag tracks relative movement so slower tiers never jump the
+	// value back to the finger's absolute position.
+	dragTo(clientX: number, clientY: number) {
+		const rect = this.slider.getBoundingClientRect();
+		const factor = this.scrubFactor(clientY);
+		if (factor != this.scrubLevel) {
+			if (this.scrubLevel != undefined) {
+				this.fireDragHaptic('light');
+			}
+			this.scrubLevel = factor;
+			this.style.setProperty(
+				'--scrub-label',
+				factor < 1 ? `'${SCRUB_LABELS[factor] ?? ''}'` : "''",
+			);
+		}
+		const delta =
+			((clientX - (this.dragLastX ?? clientX)) / rect.width) *
+			(this.range[1] - this.range[0]) *
+			factor *
+			(this.rtl ? -1 : 1);
+		this.dragLastX = clientX;
+		this.dragFloat = Math.min(
+			Math.max((this.dragFloat ?? Number(this.value)) + delta, this.range[0]),
+			this.range[1],
+		);
+		this._value = this.dragFloat;
+		this.dragHaptic();
+		this.liveAction();
+	}
+
+	// Optional drag_action_interval (ms): run the tap action while dragging,
+	// throttled, so the device follows the slider before release.
+	liveAction() {
+		const interval = Number(
+			this.renderTemplate(
+				(this.config.drag_action_interval ?? 0) as unknown as string,
+			),
+		);
+		if (!(interval > 0) || this.value == this.liveSentValue) {
+			return;
+		}
+		const now = Date.now();
+		if (now - (this.liveSentAt ?? 0) < interval) {
+			clearTimeout(this.liveTimer);
+			this.liveTimer = setTimeout(
+				() => this.liveAction(),
+				interval - (now - (this.liveSentAt ?? 0)),
+			);
+			return;
+		}
+		this.liveSentAt = now;
+		this.liveSentValue = this.value;
+		this.sendAction('tap_action');
+	}
+
+	lockDrag(clientX: number) {
+		this.dragLocked = true;
+		clearTimeout(this.getValueFromHassTimer);
+		this.getValueFromHass = false;
+		this.dragLastX = clientX;
+		this.dragFloat = Number(this.value);
+		this.liveSentValue = undefined;
+	}
+
+	resetDrag() {
+		this.dragLocked = false;
+		this.pointerLost = false;
+		this.dragLastX = undefined;
+		this.dragFloat = undefined;
+		this.scrubLevel = undefined;
+		clearTimeout(this.liveTimer);
+		this.style.setProperty('--scrub-label', "''");
+		this.dragHapticBucket = undefined;
+		this.dragHapticMajorBucket = undefined;
+		this.dragHapticStrongBucket = undefined;
+	}
+
+	async finishDrag() {
+		clearTimeout(this.pressedTimeout);
+		this.pressed = false;
+		const value = this.value;
+		this.resetDrag();
+		this._value = value;
+		this.fireHapticEvent('light');
+		await this.sendAction('tap_action');
+		this.endAction();
+		this.resetGetValueFromHass();
+	}
+
+	fireDragHaptic(haptic: HapticType) {
+		const event = new Event('haptic', { bubbles: true, composed: true });
+		event.detail = haptic;
+		window.dispatchEvent(event);
+	}
+
+	// Once a drag is clearly horizontal it is ours until the finger lifts:
+	// block page scroll, and if the browser still steals the pointer stream,
+	// keep following the finger through touch events.
 	onTouchMove(e: TouchEvent) {
-		if (this.dragLocked && e.cancelable) {
+		if (!this.dragLocked) {
+			return;
+		}
+		if (e.cancelable) {
 			e.preventDefault();
 		}
+		if (this.pointerLost && e.touches.length) {
+			this.dragTo(e.touches[0].clientX, e.touches[0].clientY);
+		}
+	}
+
+	onTouchEnd(_e: TouchEvent) {
+		if (this.dragLocked && this.pointerLost) {
+			this.finishDrag();
+		}
+	}
+
+	onPointerCancel(e: PointerEvent) {
+		if (this.dragLocked) {
+			this.pointerLost = true;
+			return;
+		}
+		super.onPointerCancel(e);
 	}
 
 	onPointerLeave(e: PointerEvent) {
@@ -144,7 +290,7 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 
 	onPointerDown(e: PointerEvent) {
 		super.onPointerDown(e);
-		this.dragLocked = false;
+		this.resetDrag();
 		this.slider.setPointerCapture?.(e.pointerId);
 
 		// Delay pressed state to fix initial slider thumb transition
@@ -158,24 +304,22 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 
 			// iOS tap fix
 			this._value = this.valueFromPointer(e);
-			this.dragHapticBucket = undefined;
-			this.dragHapticMajorBucket = undefined;
-			this.dragHapticStrongBucket = undefined;
 			this.dragHaptic();
 		}
 	}
 
 	async onPointerUp(e: PointerEvent) {
+		if (this.dragLocked) {
+			super.onPointerUp(e);
+			await this.finishDrag();
+			return;
+		}
 		clearTimeout(this.pressedTimeout);
-		const wasLocked = this.dragLocked;
-		this.dragLocked = false;
-		this.dragHapticBucket = undefined;
-		this.dragHapticMajorBucket = undefined;
-		this.dragHapticStrongBucket = undefined;
+		this.resetDrag();
 		super.onPointerUp(e);
 
 		if (!this.swiping && this.initialX && this.initialY) {
-			this._value = wasLocked ? this.valueFromPointer(e) : this.slider.value;
+			this._value = this.slider.value;
 			this.fireHapticEvent('light');
 			await this.sendAction('tap_action');
 		} else {
@@ -195,14 +339,13 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 			const dx = Math.abs((this.currentX ?? 0) - (this.initialX ?? 0));
 			const dy = Math.abs((this.currentY ?? 0) - (this.initialY ?? 0));
 			if (!this.dragLocked && !this.swiping && dx > 4 && dx >= dy) {
-				this.dragLocked = true;
+				this.lockDrag(e.clientX);
 			}
 
 			// Only consider significant enough movement
 			const sensitivity = 40;
 			if (this.dragLocked) {
-				this._value = this.valueFromPointer(e);
-				this.dragHaptic();
+				this.dragTo(e.clientX, e.clientY);
 			} else if (dx < dy - sensitivity) {
 				this.swiping = true;
 				this.getValueFromHass = true;
@@ -311,6 +454,8 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 					handleEvent: (e: TouchEvent) => this.onTouchMove(e),
 					passive: false,
 				}}
+				@touchend=${this.onTouchEnd}
+				@touchcancel=${this.onTouchEnd}
 				@contextmenu=${this.onContextMenu}
 			/>
 		`;
@@ -330,6 +475,13 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 				<div class="icon-label">
 					${this.buildIcon(this.icon)} ${this.buildLabel(this.label)}
 				</div>
+				${
+					this.thumbType == 'default'
+						? html`<div class="icon-label on-fill" aria-hidden="true">
+								${this.buildIcon(this.icon)} ${this.buildLabel(this.label)}
+							</div>`
+						: ''
+				}
 			</div>
 			${this.buildTooltip()}${this.buildMD3Thumb()} ${buildStyles(this.styles)}
 		`;
@@ -877,6 +1029,53 @@ export class CustomFeatureSlider extends BaseCustomFeature {
 					justify-content: center;
 					align-items: center;
 					pointer-events: none;
+				}
+
+				/* The label redrawn in a deep shade of the fill colour, clipped to
+				   the filled part, so it stays legible on either side of the edge. */
+				.icon-label.on-fill {
+					position: absolute;
+					inset: 0;
+					--label-color: var(
+						--label-on-fill-color,
+						color-mix(in srgb, var(--color, var(--feature-color)) 30%, #000)
+					);
+					--icon-color: var(--label-color);
+					color: var(--label-color);
+					clip-path: inset(
+						0
+							calc(
+								50% - var(--thumb-offset, 0px) - var(--thumb-width, 12px) / 2
+							)
+							0 0
+					);
+					transition: clip-path 180ms ease-in-out;
+				}
+				:host([dir='rtl']) .icon-label.on-fill {
+					clip-path: inset(
+						0 0 0
+							calc(
+								50% + var(--thumb-offset, 0px) - var(--thumb-width, 12px) / 2
+							)
+					);
+				}
+				:host([pressed]) .icon-label.on-fill,
+				:host(:not([ready])) .icon-label.on-fill {
+					transition: none;
+				}
+				.icon-label .label::after {
+					content: var(--scrub-label, '');
+					margin-inline-start: 0.4em;
+					font-weight: normal;
+				}
+
+				input {
+					-webkit-tap-highlight-color: transparent;
+				}
+				@media (prefers-reduced-motion: reduce) {
+					.icon-label.on-fill {
+						transition: none;
+					}
 				}
 
 				.off .background {

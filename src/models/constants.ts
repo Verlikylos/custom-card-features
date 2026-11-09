@@ -5,6 +5,18 @@ export const REPEAT_DELAY = 100;
 export const HAPTICS = false;
 export const DRAG_HAPTICS = false;
 export const DRAG_HAPTICS_INTERVAL = 10;
+// [max px outside the slider, value change per px relative to normal]
+export const SCRUB_TIERS: [number, number][] = [
+	[48, 1],
+	[120, 0.5],
+	[200, 0.25],
+	[Infinity, 0.1],
+];
+export const SCRUB_LABELS: Record<number, string> = {
+	0.5: '½×',
+	0.25: '¼×',
+	0.1: '⅒×',
+};
 
 export const DEBOUNCE_TIME = 1000;
 export const UPDATE_AFTER_ACTION_DELAY = 1000;

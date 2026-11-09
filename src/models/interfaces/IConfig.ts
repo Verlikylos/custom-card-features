@@ -156,6 +156,8 @@ export interface ISliderOptions {
 	drag_haptics_interval?: number;
 	drag_haptics_major_interval?: number;
 	drag_haptics_strong_interval?: number;
+	precision_scrub?: boolean;
+	drag_action_interval?: number;
 }
 
 export interface ISpinboxOptions {
